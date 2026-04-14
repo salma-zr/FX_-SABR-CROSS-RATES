@@ -1,0 +1,542 @@
+\documentclass[11pt]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{xcolor}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  urlcolor=blue!50!black,
+  citecolor=blue!50!black
+}
+
+\setlist[itemize]{topsep=0.35em,itemsep=0.3em,leftmargin=1.6em}
+\setlist[enumerate]{topsep=0.35em,itemsep=0.3em,leftmargin=1.8em}
+\setlength{\parskip}{0.45em}
+\setlength{\parindent}{0pt}
+
+\newcommand{\dd}{\,\mathrm{d}}
+\newcommand{\EE}{\mathbb{E}}
+\newcommand{\eps}{\varepsilon}
+\newcommand{\X}{\widetilde{X}}
+\newcommand{\Vol}{\widetilde{A}}
+\newcommand{\Order}[1]{\mathcal{O}\!\left(#1\right)}
+
+\title{\textbf{Technical Reading Notes on} \\[0.2em] \emph{SABR Models for Synthetic FX Rates}}
+\author{Initial focused reading notes\\Master 2 El Karoui}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+
+\section{Title and introduction}
+
+This paper studies how to build a volatility smile for a \emph{cross} FX rate from the smiles of two more liquid FX rates quoted against a common base currency. If currencies \(1\) and \(2\) are both quoted versus a base currency \(0\), then the cross rate is
+\[
+\X_{12}=\frac{\X_{10}}{\X_{20}}.
+\]
+The authors ask the following practical question: if the liquid pairs \(\X_{10}\) and \(\X_{20}\) are modeled with lognormal SABR, can one obtain a consistent SABR description for the synthetic cross \(\X_{12}\)?
+
+This question matters because cross FX options are economically important but often less liquid than options on the major pairs versus USD. In practice, desks may observe deep markets in EUR/USD and JPY/USD, but a thinner market in EUR/JPY for some maturities or strikes. In that situation, reconstructing the cross smile from liquid pairs is useful for at least three reasons:
+\begin{itemize}
+    \item it gives a disciplined way to mark and hedge otherwise illiquid cross options;
+    \item it provides a consistency check between liquid vanilla smiles and quoted cross-market prices;
+    \item it suggests a synthetic replication logic: hedge the cross exposure in the more liquid component markets.
+\end{itemize}
+
+The main message of the paper is elegant: although the exact cross dynamics do not remain one-factor SABR in a literal pathwise sense, the \emph{marginal law} relevant for European option prices is approximated, through the same asymptotic order as the original SABR formula, by an \emph{effective} lognormal SABR model. The technically most important part of the paper is Appendix A, where the authors show how a multifactor stochastic-volatility model can be reduced to an effective one-dimensional forward equation and then matched to SABR.
+
+\section{Global roadmap of the paper}
+
+My reading of the paper is the following.
+
+\begin{itemize}
+    \item \textbf{Main text.} The main text introduces the cross FX problem, derives the cross dynamics from the liquid component pairs, and states the effective SABR result in a practical form. It also discusses other algebraic constructions of crosses (ratio or product) and then broadens the discussion to self-consistent multi-currency models.
+    \item \textbf{Appendix A.} This is the mathematical engine of the paper. It analyzes a general multifactor lognormal stochastic-volatility model, derives an effective forward equation for the marginal density of the asset, and proves that this forward equation is asymptotically equivalent to that of a lognormal SABR model with effective parameters.
+    \item \textbf{Appendix B.} This appendix specializes the general Appendix A formulas to the actual cross FX case, in particular the two-factor model with coefficients \(\lambda_1,\lambda_2\in\{\pm1\}\). This is where the explicit effective cross-SABR parameters are written.
+    \item \textbf{Appendix C.} This appendix recalls the standard lognormal SABR implied-volatility formulas used in practice once the effective parameters are known.
+\end{itemize}
+
+The overall strategy is therefore:
+\begin{enumerate}
+    \item write the cross FX as a linear combination of stochastic drivers coming from the liquid pairs;
+    \item analyze a general model of that form rather than only the two-currency special case;
+    \item integrate out the hidden volatility factors to obtain a one-dimensional effective description;
+    \item identify this effective description with the forward equation of a lognormal SABR model.
+\end{enumerate}
+
+This section of the paper is conceptually clear. The technically difficult part is not the cross-ratio identity itself, but the reduction from a multi-factor stochastic-volatility system to a one-factor effective SABR representation.
+
+\section{Core model setup}
+
+\subsection*{Forward FX rates and the forward measure}
+
+Fix an exercise date \(T_{\mathrm{ex}}\) and the corresponding settlement date \(T_{\mathrm{set}}\). For a currency \(i\) quoted against a base currency \(0\), the forward FX rate is denoted
+\[
+\X_{i0}=\text{forward price of 1 unit of currency } i \text{ in units of currency }0.
+\]
+
+The paper works under the \(T_{\mathrm{set}}\)-forward measure associated with the \emph{denominating} currency. The reason is simple but fundamental: under the appropriate forward measure, a forward price is a martingale. Therefore, the drift disappears. This is not only a technical simplification; it is exactly the right numeraire choice for pricing European options written on the forward.
+
+For the two liquid pairs, the paper assumes lognormal SABR dynamics:
+\begin{align}
+\dd \X_{i0} &= \eps\, \Vol_i \X_{i0}\,\dd W_i, \label{eq:sabrx} \\
+\dd \Vol_i &= \eps\, \nu_i \Vol_i\,\dd Z_i, \label{eq:sabra} \\
+\dd W_i\,\dd Z_i &= \rho_{ii}\,\dd t, \qquad i=1,2. \label{eq:sabrcorr}
+\end{align}
+
+The meaning of the different terms is the following.
+\begin{itemize}
+    \item \(\X_{i0}\) is the forward FX rate itself.
+    \item \(\Vol_i\) is the instantaneous volatility factor; at time \(0\), \(\alpha_i:=\Vol_i(0)\) is the initial volatility level.
+    \item \(\nu_i\) is the vol-of-vol coefficient: it controls how fast the volatility factor moves.
+    \item \(W_i\) is the Brownian shock affecting the FX level.
+    \item \(Z_i\) is the Brownian shock affecting the volatility factor.
+    \item \(\rho_{ii}\) is the standard SABR leverage correlation between spot/forward moves and volatility moves.
+    \item \(\eps\) is the perturbative bookkeeping parameter used throughout the asymptotic analysis.
+\end{itemize}
+
+Financially, \eqref{eq:sabrx} says that the relative move of the forward FX rate is proportional both to its current level and to its current volatility factor. This is the \(\beta=1\) SABR specification: the underlying is locally lognormal. Equation \eqref{eq:sabra} says that volatility itself is random and lognormal. This captures smile dynamics more flexibly than a constant-volatility Black model.
+
+\subsection*{Why the drift disappears}
+
+The paper repeatedly switches to the forward measure associated with the settlement currency of the option considered. Under that measure, the corresponding forward FX rate is a martingale. Hence there is no drift term in the SDE. Conceptually:
+\begin{itemize}
+    \item under an arbitrary measure, the same process may carry a non-zero drift;
+    \item under the correct forward measure, pricing becomes cleaner because the economically relevant tradable quantity already has zero drift.
+\end{itemize}
+
+This is important in the cross FX problem because the natural measure for \(\X_{12}\) is not the same as the natural measure for \(\X_{10}\) or \(\X_{20}\). The paper uses exactly the measure that makes the target forward a martingale.
+
+\section{Cross FX construction and key intuition}
+
+For the cross rate of currency \(1\) in terms of currency \(2\), the paper defines
+\[
+\X_{12}=\frac{\X_{10}}{\X_{20}}.
+\]
+This is the correct no-arbitrage identity: to obtain the price of currency \(1\) in currency \(2\), one converts currency \(1\) into the base currency and then divides by the price of currency \(2\) in the same base currency.
+
+\subsection*{It\^o idea}
+
+Applying It\^o's formula to the ratio gives, before choosing the measure,
+\[
+\dd \X_{12}
+=\frac{\dd \X_{10}}{\X_{20}}
+-\frac{\X_{10}}{\X_{20}^2}\dd \X_{20}
++ \text{drift terms}.
+\]
+Once we move to the forward measure corresponding to currency \(2\), the drift terms disappear and we obtain
+\begin{align}
+\dd \X_{12} &= \eps\, \X_{12}\bigl(\Vol_1 \dd W_1-\Vol_2 \dd W_2\bigr), \label{eq:cross-dyn}\\
+\dd \Vol_1 &= \eps\, \nu_1 \Vol_1\,\dd Z_1, \qquad
+\dd \Vol_2 = \eps\, \nu_2 \Vol_2\,\dd Z_2. \label{eq:cross-vols}
+\end{align}
+
+\subsection*{Why the cross is driven by a \emph{difference}}
+
+This formula is already highly informative. The cross rate is not driven by a new independent market factor. It is driven by the \emph{difference} between two liquid FX drivers. Intuitively:
+\begin{itemize}
+    \item if both component FX rates move together because of a broad USD move, that common motion partly cancels in the ratio;
+    \item what remains is the relative movement of currency \(1\) versus currency \(2\), not their joint movement versus the base currency.
+\end{itemize}
+
+This is the main structural reason why a synthetic cross can be less volatile than the component pairs.
+
+\subsection*{Instantaneous variance and the role of correlation}
+
+Let
+\[
+\dd W_1\,\dd W_2 = c\,\dd t.
+\]
+Then from \eqref{eq:cross-dyn},
+\[
+\frac{1}{\eps^2\dd t}\operatorname{Var}_t\!\left(\frac{\dd \X_{12}}{\X_{12}}\right)
+= \Vol_1^2 -2c\,\Vol_1\Vol_2+\Vol_2^2.
+\]
+The paper denotes the square root of this quantity by an effective instantaneous volatility scale:
+\[
+\Delta^2(\Vol)=\Vol_1^2-2c\,\Vol_1\Vol_2+\Vol_2^2.
+\]
+
+This formula is extremely intuitive.
+\begin{itemize}
+    \item If \(c\) is high and \(\Vol_1,\Vol_2\) are similar, the cross is stabilized by cancellation.
+    \item If \(c\) is small, the cancellation is weaker, so the cross keeps more variance.
+    \item If \(c\) were negative, the variance of the ratio would increase, because the numerator and denominator would move in opposite directions.
+\end{itemize}
+
+So even before any asymptotic calculation, the SDE suggests that the cross should have an \emph{effective} volatility factor built from the two component vols and their correlation. The rest of the paper makes this intuition precise and extends it from the instantaneous variance level to the full European option smile.
+
+\subsection*{Single stochastic volatility versus general correlation structure}
+
+The paper emphasizes a practical simplification often used in FX:
+\[
+\dd Z_1=\dd Z_2 \equiv \dd Z.
+\]
+Under this \emph{single stochastic vol} assumption, the unobservable cross-correlations among volatility factors collapse to a much more parsimonious structure. Then one new parameter, the FX-FX correlation \(c\), largely controls the cross smile once the two liquid SABR calibrations are known.
+
+This is financially plausible: in many FX markets, option prices across related pairs become elevated or subdued together. In other words, the volatility environment is often highly shared, even if not literally identical.
+
+\section{Main result of the paper}
+
+The main result is that the cross FX can be priced, for European options and at a fixed expiry, by an \emph{effective lognormal SABR model}
+\begin{align}
+\dd \X_{12} &= \eps\, A_{\mathrm{eff}} \X_{12}\,\dd W, \\
+\dd A_{\mathrm{eff}} &= \eps\, \nu_{\mathrm{eff}} A_{\mathrm{eff}}\,\dd Z, \\
+\dd W\,\dd Z &= \rho_{\mathrm{eff}}\,\dd t,
+\end{align}
+with accuracy \(\Order{\eps^2}\), i.e.\ the same asymptotic order as the original SABR implied-volatility expansion.
+
+In the practically important single-volatility case, the effective parameters are presented in the paper as
+\begin{align}
+\alpha_{\mathrm{eff}}
+&= \Delta(\alpha)\exp\!\left(\frac14 \eps^2 \Gamma(\alpha)T_{\mathrm{ex}}\right), \label{eq:alphaeff}\\
+\rho_{\mathrm{eff}}
+&= \frac{\bar\rho(\alpha)\,\bar\nu(\alpha)}
+{\sqrt{\bar\nu(\alpha)^2+\kappa(\alpha)}}, \label{eq:rhoeff}\\
+\nu_{\mathrm{eff}}
+&= \sqrt{\bar\nu(\alpha)^2+\kappa(\alpha)}, \label{eq:nueff}
+\end{align}
+where
+\begin{align}
+\Delta^2(\alpha) &= \alpha_1^2-2c\,\alpha_1\alpha_2+\alpha_2^2, \label{eq:Delta}\\
+\bar\rho(\alpha) &= \frac{\alpha_1\rho_{11}-\alpha_2\rho_{22}}{\Delta(\alpha)}, \\
+\bar\nu(\alpha) &=
+\frac{\alpha_1^2\nu_1-c\,\alpha_1\alpha_2(\nu_1+\nu_2)+\alpha_2^2\nu_2}
+{\Delta(\alpha)^2}. \label{eq:bar-nu}
+\end{align}
+
+The interpretation is important.
+\begin{itemize}
+    \item \(\alpha_{\mathrm{eff}}\) is the initial effective volatility level of the cross.
+    \item \(\rho_{\mathrm{eff}}\) is the effective leverage parameter: it measures how the cross and its effective volatility co-move.
+    \item \(\nu_{\mathrm{eff}}\) is the effective vol-of-vol of the cross.
+    \item \(\Gamma\) and \(\kappa\) are correction terms that capture dispersion effects which are absent in a crude first-order averaging.
+\end{itemize}
+
+In words, the cross smile inherits information from both liquid pairs through three channels:
+\begin{enumerate}
+    \item the relative size of the two instantaneous vols;
+    \item the correlation \(c\) between the FX drivers;
+    \item the way each component pair couples its own price moves and volatility moves.
+\end{enumerate}
+
+This is useful in practice because it replaces an illiquid direct calibration by a synthetic one based on liquid inputs. It also gives a consistency test: if quoted cross options strongly disagree with this effective smile, the market is either incorporating information not captured by the model or it is misaligned with the liquid component markets.
+
+\section{Main focus --- Appendix A}
+
+Appendix A is, in my view, the central technical contribution of the paper. The cross FX formulas of Appendix B are important in practice, but they become conceptually much clearer once one understands Appendix A. The appendix is not merely an algebraic supplement: it explains \emph{why} a multifactor stochastic-volatility model can still lead to an effective one-factor SABR description for European claims.
+
+\subsection{Starting point: the general multifactor stochastic volatility model}
+
+Appendix A starts from the general model
+\begin{align}
+\dd \X &= \eps\, \X \sum_{j=1}^n \lambda_j \Vol_j \,\dd W_j, \label{eq:A1a} \\
+\dd \Vol_j &= \eps\, \nu_j \Vol_j \,\dd Z_j, \qquad j=1,\dots,n, \label{eq:A1b}
+\end{align}
+with full correlation structure
+\[
+\dd W_i\dd W_j=c_{ij}\dd t,\qquad
+\dd W_i\dd Z_j=\rho_{ij}\dd t,\qquad
+\dd Z_i\dd Z_j=r_{ij}\dd t.
+\]
+
+The first important point is that this is broader than the cross FX problem. The cross FX case is only the specialization \(n=2\) with signs \(\lambda_1=1\), \(\lambda_2=-1\) (or \(+1\) for product-type crosses). So Appendix A is proving a more general reduction theorem.
+
+The key object already visible here is the instantaneous variance scale
+\[
+\Delta^2(A)=\sum_{i,j} c_{ij}\lambda_i\lambda_j A_iA_j.
+\]
+If the volatility factors were frozen, the model would reduce to a one-factor lognormal diffusion with volatility \(\Delta(A)\). This is the leading intuition behind the whole appendix: \(\Delta(A)\) is the natural candidate for the effective volatility level.
+
+\subsection{Why one wants a reduced effective description}
+
+The full state vector is \((\X,\Vol_1,\dots,\Vol_n)\). For European options, this is more information than one really wants. The payoff depends only on \(\X_T\), so the full joint law of the volatility factors is an intermediate object, not the final goal.
+
+The problem is that the full Markovian description is high-dimensional and parameter-heavy:
+\begin{itemize}
+    \item it contains many correlations \((c_{ij},\rho_{ij},r_{ij})\);
+    \item some of them are not directly observable from liquid market data;
+    \item solving the full forward PDE is much harder than solving a one-dimensional PDE.
+\end{itemize}
+
+So the objective is not to obtain an exact pathwise representation by one factor. The objective is more modest and more relevant: obtain a \emph{marginal} description of \(\X_T\) that is accurate enough for European pricing. This distinction is conceptually essential. The paper does \emph{not} claim that the entire multifactor process is exactly a SABR process. It claims that the terminal law relevant for European options is asymptotically the same as that of an effective SABR model.
+
+\subsection{Definition and role of the joint density and marginal density}
+
+The appendix introduces the joint transition density
+\[
+p(t,x,\alpha;T,X,A)
+=
+\EE\!\left[
+\delta\!\bigl(\X(T)-X\bigr)\,
+\delta_n\!\bigl(\Vol(T)-A\bigr)
+\,\middle|\,
+\X(t)=x,\ \Vol(t)=\alpha
+\right].
+\]
+
+This density contains the full future information of both the asset and the volatility vector. But for European pricing, the really important object is the \emph{marginal density}
+\[
+Q^{(0)}(t,x,\alpha;T,X)=\int p(t,x,\alpha;T,X,A)\,\dd A_1\cdots \dd A_n.
+\]
+This is simply the probability density of ending at \(X\), regardless of the terminal volatility state.
+
+The appendix also defines a family of weighted densities
+\[
+Q^{(k)}(t,x,\alpha;T,X)
+=
+\int \Delta(A)^k\, p(t,x,\alpha;T,X,A)\,\dd A_1\cdots \dd A_n.
+\]
+These are not moments of \(X\) in the usual sense. They are better understood as \emph{volatility-weighted marginal densities}. The specific quantity \(Q^{(2)}\) appears naturally because the diffusion coefficient of \(\X\) is proportional to \(\Delta(A)^2X^2\).
+
+So the mathematical problem becomes:
+\begin{quote}
+Can one express the weighted density \(Q^{(2)}\), which encodes the effect of hidden stochastic volatility, directly in terms of the observable marginal density \(Q^{(0)}\)?
+\end{quote}
+
+\subsection{The conservation law}
+
+The joint density \(p\) satisfies the forward Kolmogorov equation. When the appendix integrates that equation over all volatility variables \(A_1,\dots,A_n\), the derivatives in the \(A\)-coordinates vanish because they are perfect derivatives and the boundary terms disappear. What remains is the exact relation
+\[
+\partial_T Q^{(0)}
+=
+\frac12\eps^2 \partial_{XX}\!\bigl(X^2 Q^{(2)}\bigr).
+\]
+
+This is called a \emph{conservation law} for the marginal density.
+
+The conceptual content is very important:
+\begin{itemize}
+    \item the equation is exact;
+    \item it is already one-dimensional in \(X\);
+    \item but it is not closed, because it still depends on \(Q^{(2)}\).
+\end{itemize}
+
+This is the same kind of structure one sees in kinetic theory or fluid mechanics: a conservation equation for a low-dimensional observable is exact, but it depends on a higher-order quantity and therefore needs a closure relation.
+
+So Appendix A can be summarized as: \emph{derive a usable closure for \(Q^{(2)}\) in terms of \(Q^{(0)}\)}.
+
+\subsection{The moments \(Q^{(k)}\) and why they are introduced}
+
+The introduction of \(Q^{(k)}\) is not decorative. It is the right language for the closure problem.
+
+Why \(Q^{(2)}\)? Because the diffusion term of \(\X\) involves \(\Delta(A)^2\). When one integrates out the volatility variables, one does not get \(\Delta(\alpha)^2 Q^{(0)}\) exactly. Instead one gets the \emph{conditional average} of \(\Delta(A)^2\) given the terminal value \(X\), and that is exactly what \(Q^{(2)}\) represents.
+
+Why define the whole family \(Q^{(k)}\) instead of only \(Q^{(2)}\)? Because the backward equation for these objects has a clean structure, and comparing the cases \(k=0\) and \(k=2\) eventually reveals the effective constitutive law.
+
+Conceptually:
+\begin{itemize}
+    \item \(Q^{(0)}\) tells us \emph{where} the mass of the terminal asset distribution lies;
+    \item \(Q^{(2)}\) tells us the \emph{effective local variance weight} attached to that mass.
+\end{itemize}
+The appendix succeeds because it shows that these two objects are asymptotically linked in a very simple way.
+
+\subsection{The asymptotic expansion in \(\eps\)}
+
+The appendix then studies the backward Kolmogorov equation for \(Q^{(k)}\), setting
+\[
+\tau=T-t.
+\]
+The expansion is organized in powers of \(\eps\), and the target accuracy is through \(\Order{\eps^2}\), exactly as in the original SABR implied-volatility asymptotics.
+
+Here \(\eps\) should be understood mainly as a \emph{bookkeeping parameter}. The point is not to claim that every market regime has tiny volatility. The point is to make precise which terms are retained in the same asymptotic sense as the classical SABR formula itself.
+
+This is one reason I find Appendix A conceptually strong: the authors are careful to match the accuracy level of the model reduction to the accuracy level already accepted when practitioners use the standard SABR formula.
+
+\subsection{The change of variables and its role}
+
+The crucial change of variables is
+\[
+z=\frac{\log(X/x)}{\eps\,\Delta(\alpha)}.
+\]
+This is a very natural scaling:
+\begin{itemize}
+    \item the variable \(\log(X/x)\) is the log-moneyness from the starting point;
+    \item the denominator \(\eps \Delta(\alpha)\) is the leading diffusive scale;
+    \item therefore \(z\) is an order-one variable in the short-noise asymptotic regime.
+\end{itemize}
+
+The appendix also rescales \(Q^{(k)}\) by writing
+\[
+Q^{(k)}=\frac{1}{\eps}\Delta(\alpha)^{k-1} X\, S^{(k)}.
+\]
+This transformation is technical, but the intuition is clear:
+\begin{itemize}
+    \item it removes the trivial \(X\)-scaling coming from the lognormal structure;
+    \item it normalizes the delta initial condition into \(S^{(k)}\to \delta(z)\);
+    \item most importantly, it makes the leading-order equation independent of \(\alpha\).
+\end{itemize}
+
+That last point is the key conceptual gain. Once the leading operator no longer depends explicitly on \(\alpha\), derivatives with respect to the initial volatility state become higher-order effects. This is why several mixed derivatives can be neglected consistently at the order considered. In other words, the change of variables isolates the universal diffusive core of the problem from the slower parameter dependence.
+
+\subsection{The constitutive relation linking \(Q^{(2)}\) and \(Q^{(0)}\)}
+
+After the change of variables, the appendix compares the equations satisfied by \(S^{(0)}\) and \(S^{(2)}\). They are very close, but not identical. The paper then performs two corrective transformations:
+\[
+U=\bigl(1+2\eps\beta z+\eps^2 g z^2\bigr)S^{(0)},
+\]
+and then
+\[
+U = H\exp\!\left(-\eps^2\kappa z^2-\eps^2(\beta\Delta+\phi-\kappa)\tau\right).
+\]
+
+These steps are technical, but the main idea is simple:
+\begin{quote}
+Modify \(S^{(0)}\) just enough so that the transformed object satisfies, up to \(\Order{\eps^2}\), the \emph{same} PDE and the \emph{same} initial condition as \(S^{(2)}\).
+\end{quote}
+
+Once this is achieved, uniqueness implies that the transformed object and \(S^{(2)}\) coincide to the relevant asymptotic order.
+
+Tracking back through the transformations gives the constitutive law
+\[
+Q^{(2)}
+=
+\Delta(\alpha)^2
+\exp\!\bigl(\eps^2(\Gamma(\alpha)+\beta(\alpha)\Delta(\alpha))\tau\bigr)
+\bigl(1+2\eps\beta(\alpha) z+\eps^2\gamma(\alpha) z^2\bigr)
+Q^{(0)},
+\]
+through \(\Order{\eps^2}\), where
+\[
+\gamma = g+\kappa,
+\qquad
+\Gamma = \phi-\kappa.
+\]
+
+This is, to me, the decisive mathematical step of the appendix. The conservation law was exact but unclosed. The constitutive relation closes it. Conceptually:
+\begin{itemize}
+    \item \(\beta\) captures the leverage-type skew contribution;
+    \item \(\gamma\) captures the effective quadratic correction, i.e.\ the effective vol-of-vol strength;
+    \item \(\Gamma\) captures a time-accumulating correction to the overall scale.
+\end{itemize}
+
+The technical manipulations matter, but the big picture is stronger: the hidden volatility factors influence the marginal law of \(X\) only through a small set of effective coefficients.
+
+\subsection{The effective forward equation}
+
+Substituting the constitutive law into the conservation equation yields the effective forward PDE:
+\[
+\partial_T Q^{(0)}
+=
+\frac12 \eps^2 \Delta(\alpha)^2
+\exp\!\bigl(\eps^2(\beta(\alpha)\Delta(\alpha)+\Gamma(\alpha))T\bigr)
+\,
+\partial_{XX}
+\left[
+\bigl(1+2\eps\beta(\alpha) z+\eps^2\gamma(\alpha) z^2\bigr)
+X^2 Q^{(0)}
+\right],
+\]
+with
+\[
+z=\frac{\log(X/x)}{\eps\,\Delta(\alpha)}.
+\]
+
+This is the effective forward equation for the marginal density. Several comments are worth making.
+\begin{itemize}
+    \item The state variable is now only \(X\): the hidden factors have been integrated out.
+    \item The coefficients \(\Delta,\beta,\gamma,\Gamma\) summarize the whole multifactor stochastic-volatility structure.
+    \item The equation is one-dimensional, so numerically it is much more tractable than the original joint-density PDE.
+\end{itemize}
+
+An elegant point made in the paper is that even though the constitutive relation is asymptotic, the resulting forward equation can be treated as an arbitrage-free model in its own right because the corresponding density remains positive. So the output is more than a formal series: it is a usable pricing model.
+
+\subsection{Why this effective forward equation corresponds to a SABR model}
+
+The paper then recalls the known effective forward equation associated with a lognormal SABR model
+\begin{align*}
+\dd \X &= \eps\, \Vol \X\,\dd W, \\
+\dd \Vol &= \eps\, \nu \Vol\,\dd Z, \\
+\dd W\,\dd Z &= \rho\,\dd t.
+\end{align*}
+For SABR, the marginal density satisfies a forward equation of the same structural form:
+\[
+\partial_T Q^{\mathrm{SABR}}
+=
+\frac12 \eps^2 \alpha^2 e^{\eps^2\alpha\rho\nu T}
+\,
+\partial_{XX}
+\left[
+\bigl(1+2\eps \rho\nu z+\eps^2\nu^2 z^2\bigr)
+X^2Q^{\mathrm{SABR}}
+\right].
+\]
+
+This is the crucial pattern match. The two equations have the same architecture:
+\begin{itemize}
+    \item a global volatility scale;
+    \item a linear correction in \(z\) controlling skew;
+    \item a quadratic correction in \(z\) controlling smile curvature;
+    \item an exponential time factor.
+\end{itemize}
+
+The only remaining subtlety is the time factor, which is handled in the appendix by a small time reparametrization. Equivalently, one may think of this as an expiry-dependent correction to the effective initial volatility. This is why \(\alpha_{\mathrm{eff}}\) slightly depends on the expiry \(T_{\mathrm{ex}}\) in the final formula.
+
+This point is important for honest understanding: the paper matches the terminal density \emph{for a fixed expiry}. It is not claiming that the whole multifactor model is globally identical to one SABR process for every maturity without any correction.
+
+\subsection{Final effective SABR parameters and interpretation}
+
+Matching the effective forward equation to SABR yields
+\begin{align}
+\alpha_{\mathrm{eff}} &= \Delta(\alpha)\exp\!\left(\frac14\eps^2\Gamma(\alpha)T_{\mathrm{ex}}\right), \\
+\rho_{\mathrm{eff}} &= \frac{\beta(\alpha)}{\sqrt{\gamma(\alpha)}}, \\
+\nu_{\mathrm{eff}} &= \sqrt{\gamma(\alpha)}.
+\end{align}
+
+These formulas are the clean final output of Appendix A. Their interpretation is, in my reading, the following.
+\begin{itemize}
+    \item \(\Delta(\alpha)\) is the leading effective instantaneous volatility level.
+    \item \(\beta(\alpha)\) is the effective skew coefficient. In SABR language, it plays the role of \(\rho\nu\).
+    \item \(\gamma(\alpha)\) is the effective squared vol-of-vol.
+    \item \(\Gamma(\alpha)\) is a second-order correction that shifts the effective initial volatility level over the target expiry.
+\end{itemize}
+
+When the appendix is specialized to cross FX in Appendix B, these coefficients become explicit combinations of \(\alpha_1,\alpha_2\), the FX-FX correlation \(c\), the component leverage parameters \(\rho_{11},\rho_{22}\), and the component vol-of-vol parameters \(\nu_1,\nu_2\). In the single stochastic-vol case, the formulas simplify further into the practically interpretable quantities \(\Delta\), \(\bar\rho\), \(\bar\nu\), plus dispersion corrections \(\kappa\) and \(\Gamma\).
+
+For me, this is the best conceptual summary of Appendix A:
+\begin{quote}
+start from a multifactor model, integrate out the hidden volatility state, close the resulting conservation law asymptotically, and recognize the closed one-dimensional PDE as the forward equation of an effective lognormal SABR model.
+\end{quote}
+
+\section{What I understand well at this stage}
+
+After two days of work, I think I understand the following points reasonably well.
+
+\begin{itemize}
+    \item The overall objective of the paper: infer or test cross FX smiles from liquid component smiles.
+    \item The financial meaning of the cross construction \(\X_{12}=\X_{10}/\X_{20}\) and why the cross dynamics involve a \emph{subtraction} of stochastic drivers.
+    \item The role of the FX-FX correlation \(c\): it determines how much common movement cancels in the cross.
+    \item The logic of the effective SABR reduction: European prices depend on the marginal law of \(\X_T\), not on the full volatility state.
+    \item The conceptual role of Appendix A: derive a closed effective forward equation and then identify it with SABR.
+    \item The meaning of the main effective coefficients \(\Delta\), \(\beta\), \(\gamma\), \(\Gamma\), and, in the single-vol case, \(\bar\rho\) and \(\bar\nu\).
+\end{itemize}
+
+\section{What remains technically difficult}
+
+There are also points that I would present honestly as still under study.
+
+\begin{itemize}
+    \item Some of the detailed asymptotic manipulations in Appendix A, especially the exact way the derivative terms in \(\alpha\) are shown to be negligible at the required order.
+    \item The full algebraic derivation of the coefficients \(\kappa\) and \(\Gamma\) in the general multifactor case.
+    \item The maturity-dependent correction in \(\alpha_{\mathrm{eff}}\), which is conceptually clear to me but still deserves a slower derivation.
+    \item The more general correlation structures of Appendix B and how stable they are in calibration practice.
+    \item The precise implementation side: when one prefers explicit SABR implied-volatility formulas and when one prefers solving the effective forward PDE numerically.
+\end{itemize}
+
+I would therefore say that I already have a clear map of the paper and a genuinely solid understanding of the main mechanism, but not yet a fully internalized command of every algebraic detail.
+
+\section{Conclusion}
+
+This paper achieves a useful and elegant result: it shows that synthetic cross FX smiles can be reconstructed from liquid component SABR smiles by passing through an effective SABR model. The main practical payoff is immediate: one can price and hedge illiquid cross options using liquid pairs while keeping a coherent smile framework.
+
+What seems strongest to me after this first reading is the structure of the argument. The cross FX SDE gives the intuition, Appendix A gives the reduction mechanism, and Appendix B translates the general result into implementable formulas. After two days, I would say I understand the objective, the logic of the construction, and the central role of Appendix A quite well, while some of the finer asymptotic details still deserve a slower second pass.
+
+\end{document}

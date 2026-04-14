@@ -1,0 +1,91 @@
+\documentclass[11pt]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.35em}
+\setlist[itemize]{leftmargin=1.5em,itemsep=0.2em,topsep=0.2em}
+
+\newcommand{\eps}{\varepsilon}
+\newcommand{\dd}{\,\mathrm{d}}
+
+\title{\textbf{Initial Reading Notes on SABR Models for Synthetic FX Rates}}
+\author{Master 2 El Karoui --- after two days of work}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section*{1. Objective of the paper}
+
+The paper studies how to reconstruct the smile of an illiquid cross FX rate from two more liquid FX pairs quoted against a common base currency. The main result is that, up to the same asymptotic order as the usual SABR formula, the cross can be represented by an effective lognormal SABR model.
+
+\section*{2. Global understanding}
+
+\begin{itemize}
+    \item Main text: formulate the cross FX problem and state the effective SABR result in practical form.
+    \item Appendix A: derive the effective forward equation for a general multifactor stochastic-volatility model.
+    \item Appendix B: specialize the general formulas to the cross FX case.
+    \item Appendix C: recall standard SABR implied-volatility formulas.
+    \item Main mathematical idea: reduce a multi-factor model to a one-dimensional marginal description, then identify that description with SABR.
+\end{itemize}
+
+\section*{3. Part I focused on}
+
+I chose to focus especially on \textbf{Appendix A}.
+
+\begin{itemize}
+    \item It is the mathematical core of the paper.
+    \item It explains \emph{why} an effective SABR model appears, not only \emph{what} the final parameters are.
+    \item Once Appendix A is understood, Appendix B becomes much easier to read as a specialization to cross FX.
+\end{itemize}
+
+\section*{4. What I understood well}
+
+\begin{itemize}
+    \item The cross FX rate is written as a ratio of two forwards:
+    \[
+    \widetilde{X}_{12}=\frac{\widetilde{X}_{10}}{\widetilde{X}_{20}}.
+    \]
+    \item Under the appropriate forward measure, the drift disappears and
+    \[
+    \frac{\dd \widetilde{X}_{12}}{\widetilde{X}_{12}}
+    = \eps\left(\widetilde{A}_1 \dd W_1-\widetilde{A}_2 \dd W_2\right).
+    \]
+    \item The cross is therefore driven by a \emph{difference} of liquid FX drivers.
+    \item The instantaneous cross variance is controlled by
+    \[
+    \Delta^2 = A_1^2-2cA_1A_2+A_2^2,
+    \]
+    which already suggests an effective volatility factor.
+    \item Appendix A builds a closure relation between the marginal density \(Q^{(0)}\) and the weighted density \(Q^{(2)}\), then derives a one-dimensional effective forward PDE.
+    \item Matching that PDE with the SABR forward PDE gives effective parameters \(\alpha_{\mathrm{eff}}, \rho_{\mathrm{eff}}, \nu_{\mathrm{eff}}\).
+\end{itemize}
+
+\section*{5. Key intuitions}
+
+\begin{itemize}
+    \item \textbf{Cross FX dynamics:} common moves versus the base currency partly cancel in the ratio.
+    \item \textbf{Effective volatility:} the cross does not need a new independent factor; its variance comes from combining the two liquid factors and their correlation.
+    \item \textbf{Why an effective SABR emerges:} for European options, the key object is the marginal law of \(\widetilde{X}_T\), not the full joint law with all volatility factors.
+    \item \textbf{Purpose of the asymptotic reduction:} integrate out hidden volatility variables and replace the original high-dimensional model by a one-dimensional forward equation with SABR-type coefficients.
+    \item \textbf{Central closure idea in Appendix A:} the conservation law for \(Q^{(0)}\) is exact, but it depends on \(Q^{(2)}\); the asymptotics provide a constitutive relation \(Q^{(2)} \approx \text{coefficient} \times Q^{(0)}\).
+\end{itemize}
+
+\section*{6. What I am still working on}
+
+\begin{itemize}
+    \item Some detailed asymptotic manipulations in Appendix A.
+    \item The exact derivation of the correction terms in the general multifactor case.
+    \item The maturity-dependent correction entering \(\alpha_{\mathrm{eff}}\).
+    \item The full general-correlation formulas of Appendix B.
+    \item The calibration and implementation implications in practice.
+\end{itemize}
+
+\end{document}
