@@ -1,0 +1,69 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\setlist[itemize]{leftmargin=1.5em,itemsep=0.25em,topsep=0.25em}
+
+\title{\textbf{Initial Reading Notes on SABR Models for Synthetic FX Rates}}
+\author{Master 2 El Karoui --- 2-day progress note}
+\date{\today}
+
+\begin{document}
+\maketitle
+\vspace{-1.0em}
+
+\section*{1. Objective of the paper}
+\begin{itemize}
+    \item The paper studies how to infer cross-FX option smiles from two liquid FX smiles quoted versus a common base currency.
+    \item Main question: if \(\widetilde X_{12}=\widetilde X_{10}/\widetilde X_{20}\), can we obtain a reliable SABR smile for \(\widetilde X_{12}\) from the SABR models of \(\widetilde X_{10}\) and \(\widetilde X_{20}\)?
+    \item Main result: yes, through an effective lognormal SABR approximation accurate to \(O(\varepsilon^2)\).
+\end{itemize}
+
+\section*{2. Global understanding}
+\begin{itemize}
+    \item \textbf{Main text:} financial setup, cross construction, and practical formulas for effective SABR parameters.
+    \item \textbf{Appendix A:} general asymptotic reduction from a multi-factor stochastic-vol model to an effective one-factor forward equation.
+    \item \textbf{Appendix B:} specialization of Appendix A to cross-FX (\(n=2\), signed loadings), giving explicit cross formulas.
+    \item \textbf{Overall strategy:} derive marginal density PDE in one dimension, then match it to SABR's effective forward PDE.
+\end{itemize}
+
+\section*{3. Part I focused on}
+\begin{itemize}
+    \item I chose to focus mainly on \textbf{Appendix A}.
+    \item Reason: it is the mathematical core that explains \emph{why} an effective SABR emerges, not only \emph{what} formulas to use.
+    \item This section gives the reduction pipeline: high-dimensional dynamics \(\to\) closed marginal PDE \(\to\) effective SABR parameters.
+\end{itemize}
+
+\section*{4. What I understood well}
+\begin{itemize}
+    \item Cross rate dynamics comes naturally from It\^o on \(\widetilde X_{12}=\widetilde X_{10}/\widetilde X_{20}\), with drift removed in the appropriate forward measure.
+    \item The cross is driven by a signed combination of component drivers; correlation \(c\) controls cancellation/amplification of noise.
+    \item In Appendix A, the key closure issue is clear:
+    \[
+    \partial_T Q^{(0)}=\frac12\varepsilon^2\partial_{XX}\!\bigl(X^2Q^{(2)}\bigr),
+    \]
+    so one needs a constitutive relation \(Q^{(2)}\) in terms of \(Q^{(0)}\).
+    \item The effective-SABR parameters are obtained by matching the resulting one-dimensional PDE with SABR's asymptotic forward PDE.
+\end{itemize}
+
+\section*{5. Key intuitions}
+\begin{itemize}
+    \item \textbf{Cross FX dynamics:} ratio structure implies a difference of component return shocks.
+    \item \textbf{Effective volatility:} instantaneous variance has a quadratic form combining both vols and their correlation.
+    \item \textbf{Why effective SABR emerges:} after asymptotic reduction, the marginal PDE has the same corrected structure as SABR (\(1+2\varepsilon \cdot +\varepsilon^2\cdot\)).
+    \item \textbf{Purpose of asymptotic reduction:} preserve pricing-relevant information while collapsing dimensionality.
+\end{itemize}
+
+\section*{6. What I am still working on}
+\begin{itemize}
+    \item Some technical details in the variable transforms used to prove the \(Q^{(2)}\)-\(Q^{(0)}\) relation.
+    \item Detailed interpretation of all higher-order coefficients (especially mixed-correlation contributions).
+    \item Full comparison between general-correlation and single-stochastic-vol cases in Appendix B.
+    \item Calibration implications across maturities, since the mapped \(\alpha_{\mathrm{eff}}\) is expiry-dependent.
+\end{itemize}
+
+\end{document}
