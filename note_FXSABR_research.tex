@@ -1,0 +1,721 @@
+% =====================================================================
+%  Note de recherche quant — Stage FX Volatility / SABR
+%  Lecture critique de "Managing Smile Risk" (Hagan, Kumar, Lesniewski,
+%  Woodward, 2002) à la lumière de "SABR Models for Synthetic FX Rates"
+%  (Hagan, Lesniewski, Skoufis, Woodward, 2020).
+%
+%  Document autonome, directement compilable sur Overleaf
+%  (moteur pdfLaTeX recommandé).
+% =====================================================================
+
+\documentclass[11pt,a4paper]{article}
+
+% --- Encodage et langue ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+
+% --- Mathématiques ---
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{bm}
+
+% --- Mise en page et typographie ---
+\usepackage[a4paper,margin=2.4cm]{geometry}
+\usepackage{enumitem}
+\usepackage{parskip}
+\usepackage{xcolor}
+\usepackage{booktabs}
+
+% --- Liens et métadonnées PDF ---
+\usepackage[colorlinks=true,
+            linkcolor=blue!50!black,
+            urlcolor=blue!60!black,
+            citecolor=blue!50!black]{hyperref}
+
+% --- Métadonnées ---
+\title{Note de recherche : du SABR de Hagan au SABR effectif sur taux FX synthétique\\
+       \large Lecture critique de \emph{Managing Smile Risk} (2002) à la lumière de \emph{SABR Models for Synthetic FX Rates} (2020)}
+\author{Stage FX Volatility / SABR}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\bigskip
+
+% =====================================================================
+
+\section{Note de recherche : du SABR de Hagan au SABR effectif sur taux FX synthétique}
+\label{sec:note-fxsabr}
+
+\subsection*{Introduction}
+
+L'objectif de cette note est double. D'une part, lire avec un œil quant senior
+l'article fondateur \emph{Managing Smile Risk} de Hagan, Kumar, Lesniewski et
+Woodward (2002), afin d'en extraire la \emph{philosophie} sur laquelle repose
+l'ensemble de la famille SABR : un modèle simple, asymptotique, calibrable, qui
+capture le \emph{niveau}, le \emph{skew} et la \emph{convexité} du smile, tout
+en produisant une dynamique de smile cohérente avec le marché. D'autre part,
+relire \emph{SABR Models for Synthetic FX Rates} (Hagan~\emph{et~al.}, 2020,
+ci-après \textsc{FXSABR}) qui applique cette philosophie au cas du cross
+$X_{12}=X_{10}/X_{20}$ : au lieu de calibrer un SABR ad hoc sur le cross, on
+\emph{déduit} un SABR effectif à partir des deux SABR lognormaux des paires
+liquides $X_{10},X_{20}$.
+
+Le point névralgique est le suivant : dans la version la plus parcimonieuse
+(``single stochastic volatility'', $r=\mathrm{corr}(dZ_1,dZ_2)=1$) on dispose
+de \emph{trois} degrés de liberté effectifs $(\alpha_{\mathrm{eff}},
+\rho_{\mathrm{eff}},\nu_{\mathrm{eff}})$ mais on cherche à fitter typiquement
+\emph{cinq} points de smile (10P, 25P, ATM, 25C, 10C). Cette note discute
+mathématiquement les pistes d'extension --- relâchement de $r$, libération de
+$\rho_{12},\rho_{21}$, recours à un modèle bifactoriel --- et propose un plan
+d'expérience numérique pour distinguer ce qui est un \emph{vrai} degré de
+liberté observable de ce qui n'est qu'un artefact de surparamétrisation.
+
+\subsection{Lecture guidée de \emph{Managing Smile Risk}}
+\label{sec:managing-smile}
+
+\subsubsection{Pourquoi Black avec une vol par strike est incohérent}
+
+Le marché des options vanille cote, pour chaque strike $K$ et chaque maturité
+$T$, une volatilité implicite Black $\sigma_B(K,T)$. La pratique naïve
+consiste à figer $\sigma_B(K,T)$ et à utiliser pour chaque strike son propre
+modèle de Black~:
+\[
+  dF_t = \sigma_B(K,T)\,F_t\,dW_t.
+\]
+Hagan~\emph{et~al.} insistent sur le fait que cette approche est
+\emph{incohérente au sens d'un book} :
+\begin{itemize}[leftmargin=2em]
+  \item un seul forward $F_t$ ne peut pas suivre simultanément des dynamiques
+        de variances différentes, donc un book d'options sur strikes
+        multiples n'est pas associé à un seul modèle stochastique ;
+  \item les grecs (delta, vega, vanna, volga) calculés strike par strike
+        dépendent de l'hypothèse non explicitée sur le \emph{déplacement} de
+        la nappe $\sigma_B(K,F)$ quand le sous-jacent $F$ bouge
+        (\emph{sticky-strike}, \emph{sticky-delta}, \emph{sticky-local}~?), ce
+        qui rend le hedge \emph{ambigu} et instable.
+\end{itemize}
+La motivation du SABR est précisément de \emph{fixer} cette dynamique de smile
+de manière endogène et arbitrage-cohérente.
+
+\subsubsection{Pourquoi la volatilité locale type Dupire ne suffit pas}
+
+La vol locale $\sigma_{\mathrm{loc}}(K,T)$ de Dupire,
+\[
+  \sigma_{\mathrm{loc}}^2(K,T)
+  \;=\;
+  \frac{\partial_T C + (r-q)K\,\partial_K C + qC}{\tfrac{1}{2}K^2\,\partial_{KK} C},
+\]
+fitte parfaitement le smile statique observé. Mais elle prédit que, lorsque le
+forward $F$ \emph{monte}, le smile en log-moneyness se déplace dans le mauvais
+sens : le smile observé tend à suivre le forward (comportement
+\emph{sticky-delta}), tandis que la vol locale donne un comportement plutôt
+\emph{anti}-sticky-delta. C'est ce que Hagan~\emph{et~al.} appellent
+``\emph{the smile moves in the wrong direction}''. Conséquences pratiques~:
+\begin{itemize}[leftmargin=2em]
+  \item le delta calculé contient une contribution erronée de la dérivée du
+        smile par rapport à $F$ ;
+  \item les vannas (sensibilité du delta à la vol) et les volgas (convexité en
+        vol) deviennent instables ;
+  \item les couvertures dynamiques engendrent un P\&L systématiquement biaisé
+        en présence de mouvements de smile.
+\end{itemize}
+
+\subsubsection{Le modèle SABR}
+
+Le SABR (Stochastic Alpha Beta Rho) est défini, sous la mesure forward, par
+\begin{subequations}
+\begin{align}
+  dF_t       &= \alpha_t\,F_t^{\,\beta}\,dW_t, \label{eq:sabr-F}\\
+  d\alpha_t  &= \nu\,\alpha_t\,dZ_t,           \label{eq:sabr-alpha}\\
+  d\langle W,Z\rangle_t &= \rho\,dt.           \label{eq:sabr-corr}
+\end{align}
+\end{subequations}
+Interprétation des paramètres~:
+\begin{itemize}[leftmargin=2em]
+  \item $\alpha = \alpha_0$ pilote le \emph{niveau} de la vol implicite ATM ;
+  \item $\beta\in[0,1]$ pilote le \emph{backbone}, c'est-à-dire la trajectoire
+        de $\sigma_{\mathrm{ATM}}(F)$ quand $F$ varie : $\beta=1$ donne un
+        backbone lognormal (plat en log), $\beta=0$ un backbone normal ;
+  \item $\rho$ pilote le \emph{skew} (vanna) ;
+  \item $\nu$ pilote la \emph{convexité} / \emph{smile} (volga).
+\end{itemize}
+
+\subsubsection{Formule asymptotique de Hagan}
+
+Pour $\varepsilon\to 0$ (vol de vol et vol petite devant l'inverse de la
+maturité), Hagan~\emph{et~al.} obtiennent par développement singulier la
+volatilité implicite Black
+\begin{equation}
+\label{eq:hagan}
+\sigma_B(K,F)
+=
+\frac{\alpha}
+     {(FK)^{(1-\beta)/2}\Bigl\{1+\tfrac{(1-\beta)^2}{24}\log^2\!\tfrac{F}{K}
+       +\tfrac{(1-\beta)^4}{1920}\log^4\!\tfrac{F}{K}+\dots\Bigr\}}
+\cdot\frac{z}{x(z)}
+\cdot\Bigl\{1+\bigl[\,\Theta\,\bigr]\,T_{\mathrm{ex}}\Bigr\},
+\end{equation}
+avec
+\[
+  z=\frac{\nu}{\alpha}\,(FK)^{(1-\beta)/2}\log\!\frac{F}{K},\qquad
+  x(z)=\log\!\frac{\sqrt{1-2\rho z+z^2}+z-\rho}{1-\rho},
+\]
+et le coefficient temporel
+\[
+  \Theta
+  =\frac{(1-\beta)^2}{24}\,\frac{\alpha^2}{(FK)^{1-\beta}}
+  +\frac{1}{4}\,\frac{\rho\,\beta\,\nu\,\alpha}{(FK)^{(1-\beta)/2}}
+  +\frac{2-3\rho^2}{24}\,\nu^2.
+\]
+La structure de \eqref{eq:hagan} est la signature SABR~: un facteur
+\emph{niveau} en $\alpha/(FK)^{(1-\beta)/2}$, un facteur \emph{skew} en
+$z/x(z)$ piloté par $\rho$ et $\nu/\alpha$, et une correction de maturité
+$\Theta\,T_{\mathrm{ex}}$ qui mélange backbone, skew-vanna et volga.
+
+\subsubsection{Développement local autour de l'ATM}
+
+En posant $k=\log(K/F)$ et en développant \eqref{eq:hagan} pour $|k|\ll 1$,
+$T\to 0$, on obtient (cas $\beta=1$ pour clarifier)
+\begin{equation}
+\label{eq:local-expansion}
+\sigma_B(K,F)
+\;\simeq\;
+\underbrace{\alpha}_{\text{niveau}}
+\;+\;\underbrace{\tfrac{1}{2}\,\rho\,\nu}_{\text{pente / skew}}\,k
+\;+\;\underbrace{\tfrac{2-3\rho^2}{12}\,\nu^2/\alpha}_{\text{convexité / smile}}\,k^2
+\;+\;O(k^3,T).
+\end{equation}
+Ce développement permet une lecture \emph{quant} immédiate~:
+\begin{itemize}[leftmargin=2em]
+  \item la \emph{pente} ATM est essentiellement $\rho\nu$, donc le \emph{skew}
+        est piloté par la corrélation prix-vol $\rho$, qui est aussi la source
+        principale de \emph{vanna} ;
+  \item la \emph{convexité} est en $\nu^2$, donc le \emph{smile} est piloté
+        par la vol-of-vol $\nu$, qui est aussi la source principale de
+        \emph{volga} ;
+  \item le \emph{niveau} ATM est piloté par $\alpha$, modulé par les
+        corrections temporelles.
+\end{itemize}
+
+\subsubsection{Backbone, smile statique et smile dynamique}
+
+\textbf{Backbone}. Le backbone est la fonction $F\mapsto
+\sigma_{\mathrm{ATM}}(F)$, à $\alpha,\beta,\rho,\nu$ fixés. Pour $\beta=1$, on
+a $\sigma_{\mathrm{ATM}}\simeq\alpha$, indépendant de $F$ : le smile glisse
+horizontalement avec $F$ (\emph{sticky-delta}). Pour $\beta=0$, $\sigma_B
+\sim \alpha/F$ : le smile se redresse fortement.
+
+\textbf{Smile statique vs dynamique.} La volatilité locale ajuste le smile
+statique mais induit une dynamique fausse ; le SABR sacrifie un fit statique
+parfait (la formule asymptotique est en $O(\varepsilon^2)$) pour produire une
+dynamique de smile correcte, parce que $F$ et $\alpha$ évoluent de manière
+intriquée et la nappe $\sigma_B(K,F)$ se déplace de façon cohérente avec le
+marché.
+
+\textbf{Calibration par maturité.} En pratique, on calibre
+$(\alpha,\rho,\nu)$ par maturité $T_{\mathrm{ex}}$ avec $\beta$ fixé a priori
+(par convention de marché). Cela donne une \emph{nappe SABR} $T\mapsto
+(\alpha(T),\rho(T),\nu(T))$ utilisée pour interpoler/extrapoler le smile.
+
+\subsubsection{Pourquoi $\beta=1$ est naturel en FX}
+
+Trois raisons~:
+\begin{enumerate}[leftmargin=2em]
+  \item \emph{Symétrie inverse}. Si $X_{ij}$ est lognormal, alors
+        $X_{ji}=1/X_{ij}$ l'est également (à un changement de mesure près).
+        L'asymétrie de CEV avec $\beta<1$ casserait cette symétrie naturelle
+        des paires FX.
+  \item \emph{Backbone sticky-delta.} Le marché FX se comporte empiriquement
+        comme \emph{sticky-delta} ; $\beta=1$ donne précisément un backbone
+        plat et donc un smile qui glisse avec le forward.
+  \item \emph{Cohérence avec FXSABR.} Le résultat principal de FXSABR repose
+        sur l'hypothèse $\beta=1$ pour les deux composantes : on obtient alors
+        un cross qui est lui aussi lognormal-SABR à $O(\varepsilon^2)$.
+\end{enumerate}
+
+\subsection{Lecture guidée de \emph{SABR Models for Synthetic FX Rates}}
+\label{sec:fxsabr}
+
+\subsubsection{Cadre et notations}
+
+On fixe une devise de base 0 (typiquement USD) et l'on note
+$X_{i0}=$~prix forward d'une unité de devise $i$ en devise 0. Sous la mesure
+forward correspondante,
+\begin{subequations}
+\begin{align}
+  dX_{i0} &= \varepsilon\,A_i\,X_{i0}\,dW_i, \\
+  dA_i    &= \varepsilon\,\nu_i\,A_i\,dZ_i, \\
+  dW_i\,dZ_i &= \rho_{ii}\,dT,
+\end{align}
+\end{subequations}
+pour $i=1,2$. On définit le cross $X_{12}=X_{10}/X_{20}$.
+
+\subsubsection{Dynamique du cross}
+
+Itô donne, dans la mesure forward de la devise 2 (où $X_{12}$ est martingale,
+donc le drift est nul),
+\begin{subequations}
+\begin{align}
+  dX_{12} &= \varepsilon\,X_{12}\,\bigl\{A_1\,dW_1 - A_2\,dW_2\bigr\}, \\
+  dA_1    &= \varepsilon\,\nu_1\,A_1\,dZ_1, \\
+  dA_2    &= \varepsilon\,\nu_2\,A_2\,dZ_2.
+\end{align}
+\end{subequations}
+La structure de corrélation complète est~:
+\[
+  dW_1\,dW_2 = c\,dT,\quad
+  dW_i\,dZ_i = \rho_{ii}\,dT,\quad
+  dW_1\,dZ_2 = \rho_{12}\,dT,\quad
+  dW_2\,dZ_1 = \rho_{21}\,dT,\quad
+  dZ_1\,dZ_2 = r\,dT,
+\]
+avec la contrainte que la matrice de corrélation
+\[
+  M=
+  \begin{pmatrix}
+    1 & c & \rho_{11} & \rho_{12}\\
+    c & 1 & \rho_{21} & \rho_{22}\\
+    \rho_{11} & \rho_{21} & 1 & r\\
+    \rho_{12} & \rho_{22} & r & 1
+  \end{pmatrix}
+  \;\succeq\;0
+\]
+soit semi-définie positive (SDP).
+
+\subsubsection{Single stochastic volatility vs structure générale}
+
+\textbf{Cas \emph{single stochastic vol}} ($dZ_1=dZ_2\equiv dZ$). On a alors
+$\rho_{12}=\rho_{11}$, $\rho_{21}=\rho_{22}$ et $r=1$. Seul le paramètre
+$c=\mathrm{corr}(dW_1,dW_2)$ subsiste comme nouveau degré de liberté.
+
+\textbf{Cas général.} Les trois paramètres $(\rho_{12},\rho_{21},r)$ sont
+libres sous la contrainte $M\succeq 0$. C'est plus flexible mais selon les
+auteurs eux-mêmes ``\emph{would overfit the data}'' s'ils sont calibrés sur
+le smile cross seul.
+
+\subsubsection{Paramètres effectifs et SABR équivalent}
+
+Le résultat clé (annexes A et B de FXSABR) est que la loi marginale de
+$X_{12}(T_{\mathrm{ex}})$ coïncide à $O(\varepsilon^2)$ avec celle d'un SABR
+lognormal effectif
+\begin{align}
+  dX_{12} &= \varepsilon\,\widetilde A\,X_{12}\,dW, \notag\\
+  d\widetilde A &= \varepsilon\,\nu_{\mathrm{eff}}\,\widetilde A\,dZ, \quad
+  dW\,dZ = \rho_{\mathrm{eff}}\,dT, \label{eq:effective-sabr}
+\end{align}
+avec
+\begin{equation}
+\label{eq:eff-params}
+\alpha_{\mathrm{eff}}=\Delta(\beta)\,e^{-\frac{1}{4}\varepsilon^{2}\zeta(\beta)\,T_{\mathrm{ex}}},
+\quad
+\rho_{\mathrm{eff}}=\frac{\theta(\beta)}{\sqrt{\gamma(\beta)}},
+\quad
+\nu_{\mathrm{eff}}=\sqrt{\gamma(\beta)},
+\end{equation}
+où, dans le cas single-vol,
+\begin{align}
+  \Delta^{2}(\beta) &= \alpha_1^{2} - 2c\,\alpha_1\alpha_2 + \alpha_2^{2}, \label{eq:Delta} \\
+  \theta(\beta) &= \mu(\beta)\,\eta(\beta), \\
+  \gamma(\beta) &= 2\,\eta(\beta) + \zeta(\beta), \\
+  \mu(\beta) &= \frac{\alpha_1\rho_{11} - \alpha_2\rho_{22}}{\Delta(\beta)}, \\
+  \eta(\beta) &= \frac{\alpha_1^{2}\nu_1 + c\,\alpha_1\alpha_2(\nu_1+\nu_2)+\alpha_2^{2}\nu_2}{\Delta^{2}(\beta)}.
+\end{align}
+(Les coefficients $\zeta(\beta), \delta(\beta)$ recensent les termes
+\emph{dispersion of vols} ; ils sont souvent petits devant $\nu^2$ et peuvent
+être négligés au premier ordre, voir \S B.1 de l'article.)
+
+\subsubsection{Lecture financière}
+
+L'égalité en loi à $O(\varepsilon^2)$ signifie concrètement~:
+\begin{itemize}[leftmargin=2em]
+  \item les prix vanille européens sur le cross sont approximés par un Black
+        avec vol $\sigma_B^{\mathrm{eff}}(K)$ donnée par la formule de Hagan
+        \eqref{eq:hagan} avec les paramètres effectifs
+        \eqref{eq:eff-params} ;
+  \item la décomposition niveau / skew / convexité se transmet aux paramètres
+        effectifs : $\alpha_{\mathrm{eff}}$ pilote le niveau ATM du cross,
+        $\rho_{\mathrm{eff}}$ pilote son skew/vanna,
+        $\nu_{\mathrm{eff}}$ pilote son smile/volga.
+\end{itemize}
+
+Ce que l'on \emph{perd} en compactant le modèle bifactoriel en SABR effectif~:
+toute l'information sur la \emph{dépendance jointe} entre les deux vols
+$A_1, A_2$ est résumée par un seul scalaire (vol-of-vol effective). Le SABR
+effectif ne reproduit la loi terminale qu'à $O(\varepsilon^2)$~; aux strikes
+extrêmes ou pour des maturités/vol-of-vol grandes, les écarts peuvent devenir
+non négligeables.
+
+\subsection{Lien profond entre les deux articles}
+\label{sec:lien}
+
+\begin{enumerate}[leftmargin=2em,label=(\roman*)]
+  \item \emph{Managing Smile Risk} pose la \emph{philosophie} du SABR~: un
+        modèle minimaliste mais complet (niveau, skew, smile) avec une
+        dynamique de smile correcte, et une formule asymptotique
+        \eqref{eq:hagan} qui rend la calibration tractable.
+  \item \emph{FXSABR} \emph{applique} cette philosophie au cross : plutôt que
+        de calibrer un SABR ad hoc sur le smile $X_{12}$, on \emph{construit}
+        un SABR effectif à partir des deux SABR composantes, garantissant la
+        cohérence multi-marché par construction.
+  \item Les rôles canoniques $(\alpha,\rho,\nu)\leftrightarrow$
+        (niveau, skew/vanna, smile/volga) du papier original se retrouvent
+        intacts dans les paramètres $(\alpha_{\mathrm{eff}},
+        \rho_{\mathrm{eff}}, \nu_{\mathrm{eff}})$ du cross.
+  \item Le cas $\beta=1$ est central~: c'est la seule valeur qui rend la
+        relation $X_{12}=X_{10}/X_{20}$ stable par la transformation
+        SABR~$\to$~SABR effectif (cf. la symétrie inverse $X_{ji}=1/X_{ij}$).
+  \item Le rôle de $c=\mathrm{corr}(dW_1,dW_2)$ est essentiellement celui de
+        \emph{niveau de variance instantanée} du cross via
+        \eqref{eq:Delta}~:
+        \[
+          \Delta^{2}=\alpha_1^{2}-2c\,\alpha_1\alpha_2+\alpha_2^{2}.
+        \]
+        Pour $c\uparrow 1$, $\Delta\to|\alpha_1-\alpha_2|$ (le cross devient
+        peu volatile)~; pour $c\downarrow -1$, $\Delta\to\alpha_1+\alpha_2$.
+        Donc $c$ pilote essentiellement l'ATM du cross.
+\end{enumerate}
+
+\textbf{La parcimonie (et son revers).} Dans le mode single-vol, une fois
+calibrés
+$(\alpha_1,\rho_{11},\nu_1)$ et $(\alpha_2,\rho_{22},\nu_2)$ sur les deux
+marchés liquides, et $c$ sur l'ATM cross, l'ensemble du smile cross est
+\emph{déterminé}. On dispose donc effectivement de \emph{trois} degrés de
+liberté pour reproduire le smile cross, alors qu'un fit standard à 5 strikes
+demanderait davantage de flexibilité.
+
+\subsection{Pistes d'extension : introduire plus de degrés de liberté}
+\label{sec:pistes}
+
+Cette section discute, de manière honnête, les pistes possibles pour gagner
+des degrés de liberté \emph{calibrables} sans perdre la philosophie SABR.
+
+\subsubsection{Piste A — Passer de $r=1$ à $r\neq 1$}
+\label{sec:piste-A}
+
+\textbf{Interprétation.} $r=\mathrm{corr}(dZ_1,dZ_2)$ est la corrélation
+entre les deux vols stochastiques. Le mode single-vol $r=1$ revient à dire
+que les deux marchés FX sont volatils ou calmes \emph{exactement en même
+temps}. Empiriquement c'est presque vrai mais pas parfait.
+
+\textbf{Effet sur $\nu_{\mathrm{eff}}$.} Dans la structure générale, on a
+(cf. \S 1.1.1)
+\[
+  \gamma(\beta) = \theta_{1X}^{2} + 2\,r\,\theta_{1X}\theta_{2X} + \theta_{2X}^{2} + \delta(\beta),
+\]
+de sorte que
+\[
+  \nu_{\mathrm{eff}} = \sqrt{\gamma(\beta)}
+  \quad\text{est croissant en } r
+  \text{ (si } \theta_{1X}\theta_{2X}>0).
+\]
+Donc $r$ contrôle directement la \emph{convexité} du smile cross.
+
+\textbf{Effet sur $\rho_{\mathrm{eff}}$.} La quantité $\theta(\beta) =
+\zeta_{1X}\theta_{1X}+\zeta_{2X}\theta_{2X}$ ne contient pas $r$
+explicitement~; donc $r$ modifie $\rho_{\mathrm{eff}}=\theta/\sqrt{\gamma}$
+\emph{principalement via le dénominateur} : plus $r$ baisse, plus
+$\nu_{\mathrm{eff}}$ baisse, plus $\rho_{\mathrm{eff}}$ remonte en valeur
+absolue. L'effet sur le skew est donc \emph{indirect}.
+
+\textbf{Effet sur l'ATM.} $\Delta^2$ (et donc $\alpha_{\mathrm{eff}}$ au
+premier ordre) ne dépend \emph{pas} de $r$. C'est précisément la raison qui
+rend $r$ candidat naturel pour ajuster la convexité \emph{sans} polluer
+l'ATM.
+
+\textbf{Contrainte SDP.} $r$ n'est pas libre dans $[-1,1]$ : il doit
+satisfaire $M\succeq 0$. Pour $c,\rho_{11},\rho_{22}$ donnés et
+$\rho_{12}=\rho_{11}, \rho_{21}=\rho_{22}$ fixés, le domaine admissible de
+$r$ se calcule comme
+\[
+  r \in \bigl[\,r_{\min}(c,\rho_{11},\rho_{22}),\,1\,\bigr],
+\]
+où $r_{\min}$ se trouve par diagonalisation ou par Schur complement.
+
+\textbf{Honnêteté}. Avant de conclure que $r$ est un \emph{vrai} degré de
+liberté observable, il faut vérifier expérimentalement~:
+\begin{itemize}[leftmargin=2em]
+  \item l'amplitude réelle de l'effet sur les vols 25P, ATM, 25C, 10P, 10C ;
+  \item si cet effet est suffisant pour fitter une courbure typique de marché
+        (ordre de grandeur: 30~bp à 200~bp d'écart de smile) ;
+  \item si l'effet sur le skew est négligeable, conformément à l'intuition
+        analytique.
+\end{itemize}
+
+\subsubsection{Piste B — Libérer $\rho_{12}$ et $\rho_{21}$}
+\label{sec:piste-B}
+
+\textbf{Interprétation.}
+$\rho_{12}=\mathrm{corr}(dW_1,dZ_2)$ couple le \emph{prix} de la première
+paire à la \emph{vol} de la deuxième. C'est une corrélation
+\emph{cross-market} entre prix et vol.
+
+\textbf{Effet.} Ces paramètres entrent dans
+\[
+  \theta_{1X} = \frac{\rho_{11}\alpha_1 - \rho_{21}\alpha_2}{\nu_{\mathrm{ref}}},
+  \qquad
+  \theta_{2X} = \frac{\rho_{12}\alpha_1 - \rho_{22}\alpha_2}{\nu_{\mathrm{ref}}},
+\]
+qui pilotent à la fois $\theta(\beta)$ (donc le skew effectif) et
+$\gamma(\beta)$ (donc la vol-of-vol effective). Ils sont donc des degrés de
+liberté pour ajuster l'\emph{asymétrie} du smile cross.
+
+\textbf{Risque d'overfitting.} L'article alerte explicitement~: les
+calibrer librement aboutit à des valeurs économiquement instables, parfois
+au bord du domaine SDP.
+
+\textbf{Régularisation économique.} On peut imposer
+\[
+  \rho_{12}\approx\rho_{11},\quad\rho_{21}\approx\rho_{22},
+\]
+en partant du fait que la structure de corrélation prix-vol est
+principalement intra-marché (hypothèse single-vol comme baseline), et
+pénaliser les écarts. Alternative~: estimer historiquement les corrélations
+prix-vol cross-market sur des windows glissantes, puis les figer.
+
+\textbf{Stratégie de calibration stable.} Calibration hiérarchique~:
+fixer $(\rho_{12},\rho_{21})$ par a priori économique, calibrer $r$ et $c$
+sur le smile, puis effectuer un raffinement local de $(\rho_{12},\rho_{21})$
+sous pénalisation forte.
+
+\subsubsection{Piste C — Modèle bifactoriel sans réduction}
+\label{sec:piste-C}
+
+\textbf{Idée.} Au lieu d'écraser le modèle bifactoriel en un SABR effectif,
+on \emph{garde} les deux facteurs de vol $(A_1,A_2)$ et l'on price
+directement le payoff cross.
+
+\textbf{Pricing par Monte Carlo conditionnelle.} Notons que
+\[
+  \log X_{12}(T) - \log X_{12}(0)
+  = -\tfrac{1}{2}\!\int_0^T\!\!\bigl(A_1^2 - 2c\,A_1A_2 + A_2^2\bigr)\,dt
+  + \int_0^T\!\!A_1\,dW_1 - \int_0^T\!\!A_2\,dW_2.
+\]
+\emph{Conditionnellement} à la $\sigma$-algèbre engendrée par les
+trajectoires $(A_1,A_2)$ et par le bruit indépendant des Brownian motions
+$(W_1,W_2)$ vis-à-vis de $(Z_1,Z_2)$, l'intégrale stochastique
+$\int_0^T A_1 dW_1 - \int_0^T A_2 dW_2$ est gaussienne de variance
+\[
+  V(T) = \int_0^T \bigl(A_1^2(t) - 2c\,A_1(t)A_2(t) + A_2^2(t)\bigr)\,dt,
+\]
+soit \emph{exactement la même} que le drift quadratique. La technique
+classique de Hagan-Romano / Andersen-Brotherton-Ratcliffe permet alors~:
+\begin{enumerate}[leftmargin=2em]
+  \item simuler $(A_1,A_2)$ par un schéma euler/log-euler (et le résidu
+        gaussien de prix indépendant de la vol) ;
+  \item calculer pour chaque trajectoire un prix de Black conditionnel avec
+        variance intégrée $V(T)$ ;
+  \item moyenner — ce qui réduit drastiquement la variance MC.
+\end{enumerate}
+
+\textbf{Comparaison effectif vs bifactoriel.} On peut alors comparer
+\begin{itemize}[leftmargin=2em]
+  \item le prix vanille obtenu par MC bifactorielle ;
+  \item le prix vanille obtenu via SABR effectif + formule de Hagan ;
+  \item la vol implicite obtenue par inversion Black sur chacun.
+\end{itemize}
+Les écarts mesurent l'erreur $O(\varepsilon^2)$, qui se manifeste typiquement
+aux strikes éloignés (10P/10C) ou pour des maturités/$\nu$ grandes.
+
+\subsubsection{Piste D — Calibration à 5 points}
+\label{sec:piste-D}
+
+\textbf{Constat.} Un SABR lognormal classique ($\beta=1$ fixé) a 3
+paramètres libres $(\alpha,\rho,\nu)$. En mode FXSABR single-vol, ces 3
+paramètres effectifs sont eux-mêmes \emph{imposés} par les deux composantes
++ $c$. Pour fitter 5 points (10P, 25P, ATM, 25C, 10C), on a donc besoin de
+relâcher au moins 2 contraintes supplémentaires.
+
+\textbf{Calibration hiérarchique proposée.}
+\begin{enumerate}[leftmargin=2em]
+  \item \emph{Étape~1.} Calibrer les SABR composantes
+        $(\alpha_1,\rho_{11},\nu_1)$ et $(\alpha_2,\rho_{22},\nu_2)$ sur les
+        smiles liquides des deux paires.
+  \item \emph{Étape~2.} Calibrer $c$ sur l'ATM du cross via
+        \eqref{eq:Delta}~: $c=(\alpha_1^2+\alpha_2^2-\Delta^2)/(2\alpha_1\alpha_2)$.
+  \item \emph{Étape~3.} Activer $r\in[r_{\min},1]$ pour ajuster la convexité
+        (wings 10P/10C).
+  \item \emph{Étape~4.} Si nécessaire, relâcher $(\rho_{12},\rho_{21})$ avec
+        régularisation forte autour de $(\rho_{11},\rho_{22})$ pour ajuster
+        l'asymétrie résiduelle.
+  \item \emph{Étape~5.} En dernier recours, recourir au modèle bifactoriel
+        non réduit (Piste C).
+\end{enumerate}
+
+\textbf{Fonction objectif proposée}~:
+\begin{align}
+\mathcal{L}(\theta)
+\;=\;&\sum_{i=1}^{5}w_i\bigl(\sigma_B^{\mathrm{model}}(K_i)-\sigma_B^{\mathrm{market}}(K_i)\bigr)^2\notag\\
+&\;+\;\lambda_r\,(r-1)^2
++\lambda_{12}\,(\rho_{12}-\rho_{11})^2
++\lambda_{21}\,(\rho_{21}-\rho_{22})^2 \label{eq:loss}\\
+&\;+\;\mathbb{1}\bigl[M(\theta)\not\succeq 0\bigr]\cdot+\infty,\notag
+\end{align}
+où les poids $w_i$ reflètent la liquidité des strikes et les
+$\lambda_\bullet$ pénalisent les écarts aux ancrages économiques. La
+contrainte SDP est imposée comme contrainte dure (barrière).
+
+\subsection{Proposition d'expérience numérique}
+\label{sec:experiment}
+
+\textbf{Setup.} Choisir une triplet de devises (par exemple EUR/USD,
+JPY/USD, EUR/JPY), maturité 1Y, calibrer les deux SABR composantes sur les
+smiles liquides EUR/USD et JPY/USD avec $\beta=1$.
+
+\textbf{Plan d'expérience.}
+\begin{enumerate}[leftmargin=2em]
+  \item Calculer $\Delta(\beta)$ et choisir $c$ tel que
+        $\alpha_{\mathrm{eff}}=\Delta$ matche l'ATM cross EUR/JPY observé.
+  \item Pour $r\in\{r_{\min}, r_{\min}+0.1,\ldots, 1\}$, calculer
+        $(\nu_{\mathrm{eff}},\rho_{\mathrm{eff}})$ et tracer
+        $\sigma_B^{\mathrm{eff}}(K)$ aux 5 strikes (10P, 25P, ATM, 25C, 10C).
+  \item Mesurer
+        \[
+          \Sigma(r)=
+          \bigl(\sigma_B^{\mathrm{eff}}(K_i;r)-\sigma_B^{\mathrm{eff}}(K_i;r=1)\bigr)_{i=1}^{5}
+        \]
+        en bp. Si $\|\Sigma(r)\|$ reste $<5$~bp pour tout $r\in[r_{\min},1]$,
+        $r$ est un \emph{faux} degré de liberté observable. Si l'écart
+        atteint plusieurs dizaines de bp aux 10P/10C, $r$ est un \emph{vrai}
+        degré de liberté.
+  \item Refaire la même expérience en variant $\rho_{12}\in[\rho_{11}-\delta,
+        \rho_{11}+\delta]$ et $\rho_{21}\in[\rho_{22}-\delta,
+        \rho_{22}+\delta]$ pour mesurer l'amplitude du levier sur le skew.
+  \item Valider par MC bifactorielle (Piste C) que le SABR effectif reste
+        précis dans la zone $r\in[r_{\min},1]$~; si l'écart MC vs effectif
+        excède la résolution du marché, il faut basculer en bifactoriel.
+\end{enumerate}
+
+\textbf{Critère de décision.} Comparer
+\begin{itemize}[leftmargin=2em]
+  \item l'erreur de fit résiduelle des 5 points avec uniquement
+        $(c,r)$ ouverts (Piste A) ;
+  \item l'erreur résiduelle si l'on relâche aussi $(\rho_{12},\rho_{21})$
+        (Piste B) ;
+  \item le coût en stabilité de calibration (P\&L attribution sur backtests).
+\end{itemize}
+
+\subsection{Conclusion}
+\label{sec:conclusion}
+
+\emph{Managing Smile Risk} fournit la matrice conceptuelle
+(niveau/skew/convexité $\leftrightarrow \alpha/\rho/\nu$, formule
+asymptotique, dynamique de smile correcte, choix de $\beta$) ;
+\emph{FXSABR} l'étend au cas FX synthétique en montrant que le cross hérite
+d'un SABR effectif à $O(\varepsilon^2)$. La version single-vol est
+parcimonieuse mais restrictive~: seulement 3 degrés de liberté effectifs
+contre 5 points typiques de smile. La piste la plus naturelle, et la moins
+risquée en termes de surparamétrisation, est de relâcher $r$ tout en
+gardant $\rho_{12}=\rho_{11},\rho_{21}=\rho_{22}$~: cela ouvre la convexité
+sans toucher à l'ATM ni produire de skew artificiel. \emph{Mais cette piste
+ne deviendra défendable qu'après une étude de sensibilité numérique
+montrant que la dépendance en $r$ est suffisamment forte pour matcher la
+courbure de marché tout en restant dans le domaine SDP}. Sinon, il faudra
+soit libérer $(\rho_{12},\rho_{21})$ avec régularisation, soit basculer en
+modèle bifactoriel pricé par Monte Carlo conditionnelle.
+
+\subsection*{Synthèse pour le manager (10 lignes)}
+
+\begin{enumerate}[leftmargin=2em,label=\arabic*.]
+  \item \emph{Managing Smile Risk} (Hagan~\emph{et~al.}, 2002) est l'article
+        fondateur qui définit le SABR et démontre que vol locale donne un
+        smile dynamique faux ; il fonde la calibration $\alpha,\rho,\nu$
+        comme niveau / skew / convexité.
+  \item \emph{FXSABR} reprend exactement cette philosophie pour le cross
+        $X_{12}=X_{10}/X_{20}$~: on construit un SABR effectif à
+        $O(\varepsilon^2)$ à partir des deux SABR liquides.
+  \item Le cas $\beta=1$ est central en FX (symétrie $X_{ij}\leftrightarrow
+        X_{ji}$, sticky-delta) et c'est exactement le cadre de FXSABR.
+  \item Le mode \emph{single-vol} ($r=1$) ne donne que 3 degrés de liberté
+        effectifs (les composantes + $c$), ce qui est trop parcimonieux pour
+        fitter 5 points (10P, 25P, ATM, 25C, 10C).
+  \item Relâcher $r\in[r_{\min},1]$ est la piste naturelle~: $r$ contrôle
+        $\nu_{\mathrm{eff}}$ donc la convexité, sans modifier l'ATM
+        ($\Delta^2$ est indépendant de $r$).
+  \item Mais $r$ est \emph{contraint SDP} par les autres corrélations~; il
+        faut tester numériquement la sensibilité du smile aux variations de
+        $r$ admissibles avant de revendiquer un vrai degré de liberté.
+  \item Si $r$ est insuffisant, libérer $\rho_{12},\rho_{21}$ avec
+        régularisation économique autour de $\rho_{11},\rho_{22}$, ou passer
+        en MC bifactorielle conditionnelle.
+\end{enumerate}
+
+\subsection*{Discussion avec le manager — questions à poser}
+\label{sec:questions-manager}
+
+\begin{enumerate}[leftmargin=2em,label=Q\arabic*.]
+  \item L'objectif est-il (a) de \emph{matcher} le smile cross observé, ou
+        (b) de \emph{produire} un smile no-arbitrage synthétique à partir
+        des composantes pour identifier les arbitrages~?
+  \item Sur le cross visé, les 5 points (10P, 25P, ATM, 25C, 10C) sont-ils
+        \emph{réellement} liquides, ou seulement quotés ATM + 25 RR/Fly~?
+        Cela conditionne le nombre minimum de DoF nécessaires.
+  \item Préférez-vous $r$ \emph{calibré} sur le smile cross, ou
+        \emph{estimé historiquement} sur des séries de vol implicite des
+        deux composantes~? Quelle est la stabilité historique typique~?
+  \item Quel est le seuil acceptable d'écart de vol implicite en bp sur
+        chaque strike (par exemple 5~bp ATM, 20~bp 10\,$\Delta$)~?
+  \item Acceptez-vous une approche \emph{hiérarchique} (composantes figées,
+        puis $c$, puis $r$, puis $\rho_{12}/\rho_{21}$ sous régularisation),
+        ou préférez-vous une calibration jointe~?
+  \item Comment souhaitez-vous traiter la contrainte SDP de la matrice de
+        corrélation~: barrière intérieure, projection a posteriori, ou
+        reparamétrisation de Cholesky~?
+  \item Quel est le périmètre des maturités~? L'erreur du SABR effectif est
+        en $O(\varepsilon^2)\sim O(\nu^2 T)$~; au-delà de quelle maturité
+        bascule-t-on en MC bifactoriel~?
+  \item Privilégiez-vous une extension \emph{interprétable} mais limitée
+        ($r\neq 1$ avec ancrages économiques), ou un modèle plus flexible
+        type bifactoriel/mixture, plus coûteux en computation et en
+        stabilité~?
+  \item Quelle vue avez-vous sur la \emph{stabilité temporelle} des
+        paramètres effectifs~: souhaitez-vous une recalibration
+        quotidienne ou une stabilité forte (régularisation par
+        time-series) ?
+  \item Le P\&L de hedge est-il évalué sur la base des grecs SABR effectif,
+        ou sur des grecs bifactoriels~? Cela peut justifier le choix
+        bifactoriel même si le smile fitté est identique.
+  \item Y a-t-il un benchmark interne (modèle vendor, modèle existant) sur
+        lequel comparer le smile synthétique pour validation~?
+  \item Souhaitez-vous que je livre, en plus de la note, un \emph{notebook
+        de sensibilité} (Python) qui implémente la formule asymptotique
+        SABR + les paramètres effectifs single-vol et $r$-libre~?
+\end{enumerate}
+
+\subsection*{Hypothèses, limites et tests à faire (mémo technique)}
+
+\textbf{Hypothèses.}
+(i) $\beta=1$ pour les deux composantes ;
+(ii) corrélations constantes en temps ;
+(iii) régime $\varepsilon\nu\sqrt{T}\ll 1$ pour la validité de la formule de
+Hagan ;
+(iv) les SABR composantes sont déjà \emph{bien calibrés} sur leur smile
+liquide.
+
+\textbf{Limites.}
+(i) erreur en $O(\varepsilon^2)$ du SABR effectif, manifeste aux strikes
+extrêmes ;
+(ii) en mode single-vol, $r=1$ est une simplification structurelle, pas une
+mesure ;
+(iii) les paramètres $(\rho_{12},\rho_{21},r)$ sont mal identifiés à partir
+du seul smile cross ;
+(iv) la matrice de corrélation $4\times 4$ doit rester SDP — contrainte non
+triviale à imposer dans une optimisation.
+
+\textbf{Tests numériques minimum.}
+(i) reproduire la table B.7--B.8 de FXSABR sur un cas synthétique ;
+(ii) tracer $\nu_{\mathrm{eff}}(r)$ et l'écart de smile $\Sigma(r)$ aux 5
+strikes ;
+(iii) Monte Carlo bifactorielle vs SABR effectif comme contrôle d'erreur~;
+(iv) backtests de stabilité~: refaire la calibration jour après jour et
+mesurer la dérive des paramètres.
+
+% =====================================================================
+% Fin de la section.
+% =====================================================================
+
+\end{document}
