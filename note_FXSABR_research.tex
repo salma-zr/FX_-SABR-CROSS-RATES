@@ -4,14 +4,48 @@
 %  Woodward, 2002) à la lumière de "SABR Models for Synthetic FX Rates"
 %  (Hagan, Lesniewski, Skoufis, Woodward, 2020).
 %
-%  Section auto-contenue, prête à coller dans Overleaf.
-%  Préambule minimal recommandé :
-%     \usepackage{amsmath, amssymb, amsthm, mathtools}
-%     \usepackage{bm}
-%     \usepackage{hyperref}
-%     \usepackage[utf8]{inputenc}
-%     \usepackage[T1]{fontenc}
-%     \usepackage{enumitem}
+%  Document autonome, directement compilable sur Overleaf
+%  (moteur pdfLaTeX recommandé).
+% =====================================================================
+
+\documentclass[11pt,a4paper]{article}
+
+% --- Encodage et langue ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+
+% --- Mathématiques ---
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{bm}
+
+% --- Mise en page et typographie ---
+\usepackage[a4paper,margin=2.4cm]{geometry}
+\usepackage{enumitem}
+\usepackage{parskip}
+\usepackage{xcolor}
+\usepackage{booktabs}
+
+% --- Liens et métadonnées PDF ---
+\usepackage[colorlinks=true,
+            linkcolor=blue!50!black,
+            urlcolor=blue!60!black,
+            citecolor=blue!50!black]{hyperref}
+
+% --- Métadonnées ---
+\title{Note de recherche : du SABR de Hagan au SABR effectif sur taux FX synthétique\\
+       \large Lecture critique de \emph{Managing Smile Risk} (2002) à la lumière de \emph{SABR Models for Synthetic FX Rates} (2020)}
+\author{Stage FX Volatility / SABR}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\bigskip
+
 % =====================================================================
 
 \section{Note de recherche : du SABR de Hagan au SABR effectif sur taux FX synthétique}
@@ -683,3 +717,5 @@ mesurer la dérive des paramètres.
 % =====================================================================
 % Fin de la section.
 % =====================================================================
+
+\end{document}
